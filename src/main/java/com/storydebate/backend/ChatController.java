@@ -19,9 +19,14 @@ import java.util.Map;
 public class ChatController {
 
     private final OllamaService ollamaService;
+    private final KnowledgeSearchService knowledgeSearchService;
 
-    public ChatController(OllamaService ollamaService) {
+    public ChatController(
+            OllamaService ollamaService,
+            KnowledgeSearchService knowledgeSearchService) {
+
         this.ollamaService = ollamaService;
+        this.knowledgeSearchService = knowledgeSearchService;
     }
 
     @PostMapping
@@ -71,7 +76,38 @@ public class ChatController {
             }
         }
 
-        // 4. AI 답변 및 참고 자료 요청
+        // 4. 질문에 다른 작품명이 포함되어 있는지 확인
+        if (workTitle != null) {
+
+            String mentionedWork =
+                    knowledgeSearchService.findOtherMentionedWorkTitle(
+                            question,
+                            workTitle
+                    );
+
+            // 다른 작품이 발견되면 AI 검색을 실행하지 않고 안내
+            if (mentionedWork != null) {
+
+                String answer =
+                        "현재 선택된 작품은 '" + workTitle + "'입니다.\n\n"
+                                + "질문하신 '" + mentionedWork
+                                + "'에 대한 답변을 원하시면 작품을 변경해 주세요.";
+
+                Map<String, Object> result = new LinkedHashMap<>();
+
+                result.put("question", question);
+                result.put("workTitle", workTitle);
+                result.put("answer", answer);
+                result.put("history", history);
+                result.put("sources", List.of());
+                result.put("workMismatch", true);
+                result.put("detectedWorkTitle", mentionedWork);
+
+                return result;
+            }
+        }
+
+        // 5. AI 답변 및 참고 자료 요청
         Map<String, Object> aiResult =
                 ollamaService.askWithSources(
                         question,
@@ -81,7 +117,7 @@ public class ChatController {
 
         String answer = aiResult.get("answer").toString();
 
-        // 5. 최종 응답 구성
+        // 6. 최종 응답 구성
         Map<String, Object> result = new LinkedHashMap<>();
 
         result.put("question", question);
@@ -90,6 +126,8 @@ public class ChatController {
         result.put("answer", answer);
         result.put("history", history);
         result.put("sources", aiResult.get("sources"));
+        result.put("workMismatch", false);
+        result.put("detectedWorkTitle", null);
 
         return result;
     }
